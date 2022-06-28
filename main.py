@@ -20,12 +20,12 @@ np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
 
 def main():
     # basic properties
-    time = 5.
-    substeps = 300.
+    time = 5
+    substeps = 800.
 
     # create particles
-    n_p = 70
-    bounding_box_radius = 100
+    n_p = 10
+    bounding_box_radius = 50
     v0 = np.array([0., 0.])*time/substeps
     
     Gen1 = Generator(VerletObject)
@@ -50,7 +50,8 @@ def main():
     # visualize the results
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
-    circle1 = plt.Circle((0, 0), bounding_box_radius, color='r', fill=False)
+    ax.set_facecolor('darkgray')
+    circle1 = plt.Circle((0, 0), bounding_box_radius, color='black', fill='white')
     circle2 = plt.Circle((0, 0), 10, color='r', fill=False)
     circle3 = plt.Circle((-50, -25), 10, color='r', fill=False)
     circle4 = plt.Circle((50, -50), 10, color='r', fill=False)
@@ -68,7 +69,9 @@ def main():
         frame = ax.scatter(particles[:, 0],
                            particles[:, 1],
                            #c=particles[:, 6],
+                           cmap='gist_rainbow',
                            c=np.linalg.norm(particles[:, 6:8], axis=1),
+                           edgecolors='white',
                            s=(px_per_scale*2*particles[:, 7])**2,
                            linewidth=0,
                            )
@@ -85,14 +88,15 @@ def main():
     interval = time*1000//substeps
     rendering = anim.ArtistAnimation(
         fig, frames, blit=True, interval=interval, repeat=True)
+    plt.show()
 
     fig2, ax2 = plt.subplots()
     ax2.plot(np.arange(0, len(lst_E_Kin), 1), lst_E_Kin, label='System')
-    # ax2.plot(np.arange(0,len(lst_E_Kin),1))
+    ax2.plot(np.arange(0,len(lst_E_Kin),1))
     ax2.set_xlabel('substeps')
     ax2.set_ylabel('$equv. E_{Kin}$ ')
     plt.legend()
-    #plt.close()
+    plt.close()
 
     return res, rendering
 
@@ -103,8 +107,8 @@ if __name__ == '__main__':
     #debug = main()
     end = time.time()
     print(f'Done in {round(end-start,2)} s!')
-    plt.show()
-    plt.close()
+    #plt.show()
+    #plt.close()
     
     #writer = anim.writers['ffmpeg'](fps=framerate)
     #rendering.save('PhySim.mp4', writer=writer, dpi=dpi)

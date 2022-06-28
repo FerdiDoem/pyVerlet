@@ -5,6 +5,7 @@ Created on Tue Jun 21 23:25:06 2022
 @author: Ferdinand Dömling
 
 A simple physics simulation inspired by https://www.youtube.com/c/PezzzasWork
+
 """
 
 import numpy as np
@@ -12,7 +13,7 @@ from tqdm import tqdm
 from typing import Callable
 from scipy import constants
 from itertools import combinations
-
+import math
 """
 Unit System:
     m,s,N,Kg
@@ -21,7 +22,7 @@ Unit System:
 GRAVITY = -constants.g
 BBOX_CENTER_X = 0.
 BBOX_CENTER_Y = 0.
-BBOX_ROUND_RADIUS = 100.
+BBOX_ROUND_RADIUS = 50.
 CONST_FORCE_VEC_X = 0.
 CONST_FORCE_VEC_Y = 0.
 ACCELERATION_DURATION = 100
@@ -96,7 +97,7 @@ class Solver:
     def applyCircleConstraint(self, particle, constraint_radius: float, constraint_center: tuple, bbox=False):
 
         to_center = particle.position[1]-np.array(constraint_center)
-        dist = np.linalg.norm(to_center)
+        dist = np.sqrt(to_center.dot(to_center))
         n = to_center/dist
 
         if bbox:
@@ -121,7 +122,7 @@ class Solver:
             # calculate distance between particles and possible collision axis
             min_coll_dist = par1.radius+par2.radius
             coll_axis = par1.position[1]-par2.position[1]
-            dist = np.linalg.norm(coll_axis)
+            dist = np.sqrt(coll_axis.dot(coll_axis))
             # skip to next particles when distance is bigger than sum of radii
             if dist > min_coll_dist:
                 continue
@@ -147,7 +148,7 @@ class Solver:
             # calculate distance between particles and possible collision axis
             min_coll_dist = par1.radius+par2.radius
             coll_axis = par1.position[1]-par2.position[1]
-            dist = np.linalg.norm(coll_axis)
+            dist = np.sqrt(coll_axis.dot(coll_axis))
             # skip to next particles when distance is bigger than sum of radii
             if dist > min_coll_dist:
                 continue
@@ -168,7 +169,7 @@ class Solver:
                 continue
             min_coll_dist = par1.radius+par2.radius
             coll_axis = par1.position[1]-par2.position[1]
-            dist = np.linalg.norm(coll_axis)
+            dist = np.sqrt(coll_axis.dot(coll_axis))
             # calculate the normalized vector
             n = coll_axis/dist
             # calculat the overlap
