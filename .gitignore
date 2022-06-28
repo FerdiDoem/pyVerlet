@@ -3,5 +3,5 @@
 *.Result
 *.mp4
 *.spyproject
-SpeedLab.py
+/SpeedLab.py
 
