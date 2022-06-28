@@ -1,0 +1,6 @@
+/.pylint.d
+/__pycache__
+*.Result
+*.mp4
+*.spyproject
+SpeedLab.pyW
