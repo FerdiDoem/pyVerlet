@@ -1,7 +1,7 @@
 /.pylint.d
 /__pycache__
+/.spyproject
 *.Result
 *.mp4
-*.spyproject
 SpeedLab.py
 
