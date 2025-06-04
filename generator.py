@@ -16,20 +16,20 @@ class Generator:
     
     def rnd_particle_gen(self, n: int,
                          bounding_box_radius: float,
-                         start_ID = 0,
+                         start_ID: int = 0,
                          v0: np.array = np.array((0., 0.)),
                          a0: tuple = (0., 0.)) -> Callable:
         """
         Generates random positioned particles inside the bounding area.
     
         """
-        for i in range(1, n+1):
+        for i in range(n):
     
             # create particles
-            particle = self.pt(i)
+            particle = self.pt(start_ID + i + 1)
     
             # for a circular bounding box
-            phi = np.random.random() * np.pi
+            phi = np.random.random() * 2 * np.pi
             r = np.random.random() * (bounding_box_radius-particle.radius)
             pos = r * np.cos(phi), r * np.sin(phi)
     
@@ -41,23 +41,19 @@ class Generator:
             # set static properties
             particle.density = np.random.randint(1, 7)
             particle.radius = np.random.randint(1, 5)
-            particle.mass = particle.density*particle.radius
-    
-            # debugging
-            #particle.mass = 1
-            particle.radius = 1
+            particle.mass = particle.density * particle.radius
             self.pt_list.append(particle)
             yield particle
         
     
     def chain_particles(self):
-        # TODO: Move linked objects closer together
+        """Link all generated particles sequentially."""
+        if len(self.pt_list) < 2:
+            return
+
         self.pt_list[0].linkage.append(self.pt_list[1].ID)
-        for idx,link in enumerate(self.pt_list[1:len(self.pt_list)-1]):
-            link.linkage.append(self.pt_list[idx].ID)
-            link.linkage.append(self.pt_list[idx+2].ID)
+        for idx in range(1, len(self.pt_list) - 1):
+            link = self.pt_list[idx]
+            link.linkage.append(self.pt_list[idx - 1].ID)
+            link.linkage.append(self.pt_list[idx + 1].ID)
         self.pt_list[-1].linkage.append(self.pt_list[-2].ID)
-        
-        
-            
-        

@@ -87,7 +87,7 @@ class Solver:
         to_center = particle.position[1]-np.array(potential_center)
         dist = np.sqrt(to_center.dot(to_center))
         n = to_center/dist
-        acc = n*Force/(particle.mass*dist**1)
+        acc = n * Force / (particle.mass * dist**2)
         return acc
 
     def applyOszillatingForce(self, particle: Callable, force: float, freq: float) -> np.array:
@@ -195,7 +195,6 @@ class Solver:
         self.runtime = self.dt
         with tqdm(total=steps) as pbar:
             #self.particle_init_delay(steps, delay=PARTICLE_ADDITION_INTERVAL)
-            pbar.update(1)
             while self.runtime <= time:
                 self.update()
                 # save the result of the current substep

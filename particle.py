@@ -24,12 +24,12 @@ class VerletObject:
                  ):
 
         self.ID = ID
-        self.position = np.array([pos_x, pos_y])
+        self.position = np.array([[pos_x, pos_y], [pos_x, pos_y]])
         self.acceleration = np.array([a_x, a_y])
-        self.velocity = ([v_x, v_y])
+        self.velocity = np.array([[v_x, v_y], [v_x, v_y]])
         self.density = density
-        self.mass = density*radius
-        self.radius = 1
+        self.mass = density * radius
+        self.radius = radius
         self.linkage = []
         self.fixated = False
     
