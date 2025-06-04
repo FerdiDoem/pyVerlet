@@ -38,7 +38,7 @@ def setup_solver(n_particles: int = 10,
 def animate_simulation(results, bounding_box_radius: float,
                        time: float, substeps: float):
     """Return a matplotlib animation for the given results."""
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(5, 5))
     ax.set_aspect("equal")
     ax.set_facecolor("darkgray")
     circle = plt.Circle((0, 0), bounding_box_radius,

@@ -19,6 +19,8 @@ if run:
     kinetic_fig = plot_kinetic_energy(kinetic)
 
     st.subheader("Animation")
+    html_anim = animation.to_html5_video()
+    st.components.v1.html(html_anim, height=500)
     html_anim = animation.to_jshtml()
     st.components.v1.html(html_anim, height=400)
 
