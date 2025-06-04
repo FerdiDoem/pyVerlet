@@ -285,3 +285,12 @@ class Solver:
                 self.runtime += self.dt
                 pbar.update(1)
         return self.results
+
+    def run_simulation_iter(self, time: float, steps: int):
+        """Yield results step by step while running the simulation."""
+        self.dt = time / steps
+        self.runtime = self.dt
+        for _ in range(steps):
+            self.update()
+            yield self.runtime, self.extract_results()
+            self.runtime += self.dt
