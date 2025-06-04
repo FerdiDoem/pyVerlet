@@ -65,7 +65,12 @@ class Solver:
 
         to_center = cur_pos - self.bounding_center
         dist = np.linalg.norm(to_center, axis=1)
-        n = to_center / dist[:, None]
+        n = np.divide(
+            to_center,
+            dist[:, None],
+            out=np.zeros_like(to_center),
+            where=dist[:, None] != 0,
+        )
         limit = self.bounding_radius - radii
         mask = dist > limit
         cur_pos[mask] = self.bounding_center + n[mask] * limit[mask, None]
