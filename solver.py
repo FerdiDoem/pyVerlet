@@ -13,7 +13,6 @@ from tqdm import tqdm
 from typing import Callable
 from scipy import constants
 from scipy.spatial import cKDTree
-from itertools import combinations
 import math
 """
 Unit System:
@@ -40,6 +39,24 @@ class Solver:
         self.runtime: float
         self.dt: float
         self.results = []
+        self.linkage_pairs = self._compute_linkage_pairs()
+
+    def _compute_linkage_pairs(self):
+        """Return a list of particle index pairs that are linked."""
+        id_to_idx = {p.ID: idx for idx, p in enumerate(self.particles)}
+        pairs = set()
+        for idx, p in enumerate(self.particles):
+            for link_id in p.linkage:
+                j = id_to_idx.get(link_id)
+                if j is None:
+                    continue
+                if idx == j:
+                    continue
+                pair = tuple(sorted((idx, j)))
+                pairs.add(pair)
+        if not pairs:
+            return []
+        return np.array(sorted(pairs), dtype=int)
 
         # store particle properties in numpy arrays for fast updates
         self.positions = np.array([p.position for p in particles], dtype=float)
@@ -207,21 +224,30 @@ class Solver:
         self.positions[:, 1] += accum
     
     def updateLinkageCumulative(self, target_distance):
-        for i, j in self.link_pairs:
-            coll_axis = self.positions[i, 1] - self.positions[j, 1]
-            dist = np.linalg.norm(coll_axis)
-            if dist == 0:
-                continue
-            n = coll_axis / dist
-            delta = target_distance - dist
-            self.positions[i, 1] += 0.5 * n * delta
-            self.positions[j, 1] -= 0.5 * n * delta
+        """Resolve linkage constraints for all linked particle pairs."""
+        if len(self.linkage_pairs) == 0:
+            return
 
-    def _sync_particles(self):
-        for idx, p in enumerate(self.particles):
-            p.position = self.positions[idx].copy()
-            p.velocity = self.velocities[idx].copy()
-            p.acceleration = self.accelerations[idx].copy()
+        positions = np.array([p.position[1] for p in self.particles])
+
+        i_idx = self.linkage_pairs[:, 0]
+        j_idx = self.linkage_pairs[:, 1]
+
+        delta = positions[i_idx] - positions[j_idx]
+        dist = np.linalg.norm(delta, axis=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            n_axis = np.divide(delta, dist[:, None], out=np.zeros_like(delta), where=dist[:, None] != 0)
+
+        shift = 0.5 * (target_distance - dist)[:, None] * n_axis
+
+        accum = np.zeros_like(positions)
+        np.add.at(accum, i_idx, shift)
+        np.add.at(accum, j_idx, -shift)
+
+        positions += accum
+
+        for p, new in zip(self.particles, positions):
+            p.position[1] = new
 
     def extract_results(self):
         self._sync_particles()
