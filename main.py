@@ -51,7 +51,13 @@ def main():
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
     ax.set_facecolor('darkgray')
-    circle1 = plt.Circle((0, 0), bounding_box_radius, color='black', fill='white')
+    circle1 = plt.Circle(
+        (0, 0),
+        bounding_box_radius,
+        edgecolor='black',
+        facecolor='white',
+        fill=True,
+    )
     circle2 = plt.Circle((0, 0), 10, color='r', fill=False)
     circle3 = plt.Circle((-50, -25), 10, color='r', fill=False)
     circle4 = plt.Circle((50, -50), 10, color='r', fill=False)
