@@ -10,6 +10,9 @@ n_particles = st.sidebar.slider("Number of particles", min_value=1, max_value=50
 bounding_box_radius = st.sidebar.slider("Bounding box radius", min_value=10, max_value=100, value=50)
 sim_time = st.sidebar.number_input("Simulation time (s)", min_value=1.0, max_value=20.0, value=5.0)
 substeps = st.sidebar.number_input("Substeps", min_value=10.0, max_value=2000.0, value=800.0)
+frame_skip = st.sidebar.number_input(
+    "Display every n-th frame", min_value=1, max_value=50, value=1, step=1
+)
 
 run = st.sidebar.button("Run Simulation")
 live = st.sidebar.button("Live Demo")
@@ -51,9 +54,10 @@ if live:
     for step, (_, data) in enumerate(
             solver.run_simulation_iter(sim_time, int(substeps))):
         particles = np.vstack(data)
-        scatter.set_offsets(particles[:, :2])
-        scatter.set_array(np.linalg.norm(particles[:, 6:8], axis=1))
-        scatter.set_sizes((px_per_scale * 2 * particles[:, 7]) ** 2)
-        placeholder.pyplot(fig)
+        if step % int(frame_skip) == 0:
+            scatter.set_offsets(particles[:, :2])
+            scatter.set_array(np.linalg.norm(particles[:, 6:8], axis=1))
+            scatter.set_sizes((px_per_scale * 2 * particles[:, 7]) ** 2)
+            placeholder.pyplot(fig)
         progress.progress((step + 1) / substeps)
     plt.close(fig)
