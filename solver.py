@@ -13,7 +13,6 @@ from tqdm import tqdm
 from typing import Callable
 from scipy import constants
 from scipy.spatial import cKDTree
-from itertools import combinations
 import math
 """
 Unit System:
@@ -40,6 +39,24 @@ class Solver:
         self.runtime: float
         self.dt: float
         self.results = []
+        self.linkage_pairs = self._compute_linkage_pairs()
+
+    def _compute_linkage_pairs(self):
+        """Return a list of particle index pairs that are linked."""
+        id_to_idx = {p.ID: idx for idx, p in enumerate(self.particles)}
+        pairs = set()
+        for idx, p in enumerate(self.particles):
+            for link_id in p.linkage:
+                j = id_to_idx.get(link_id)
+                if j is None:
+                    continue
+                if idx == j:
+                    continue
+                pair = tuple(sorted((idx, j)))
+                pairs.add(pair)
+        if not pairs:
+            return []
+        return np.array(sorted(pairs), dtype=int)
 
     def update(self):
         """Update particle states using numpy operations."""
@@ -192,22 +209,31 @@ class Solver:
         for p, new in zip(self.particles, positions):
             p.position[1] = new
     
-    def updateLinkageCumulative(self,target_distance):
-        for par1,par2 in combinations(self.particles,2):
-            if par1.ID not in par2.linkage:
-                continue
-            min_coll_dist = par1.radius+par2.radius
-            coll_axis = par1.position[1]-par2.position[1]
-            dist = np.sqrt(coll_axis.dot(coll_axis))
-            # calculate the normalized vector
-            n = coll_axis/dist
-            # calculat the overlap
-            delta = target_distance-dist
-            # calculate massfraction
-            radius_ratio = par1.radius/(par1.radius + par2.radius)
-            # move each particle according to the massratio
-            par1.position[1] += 0.5*n*delta
-            par2.position[1] -= 0.5*n*delta
+    def updateLinkageCumulative(self, target_distance):
+        """Resolve linkage constraints for all linked particle pairs."""
+        if len(self.linkage_pairs) == 0:
+            return
+
+        positions = np.array([p.position[1] for p in self.particles])
+
+        i_idx = self.linkage_pairs[:, 0]
+        j_idx = self.linkage_pairs[:, 1]
+
+        delta = positions[i_idx] - positions[j_idx]
+        dist = np.linalg.norm(delta, axis=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            n_axis = np.divide(delta, dist[:, None], out=np.zeros_like(delta), where=dist[:, None] != 0)
+
+        shift = 0.5 * (target_distance - dist)[:, None] * n_axis
+
+        accum = np.zeros_like(positions)
+        np.add.at(accum, i_idx, shift)
+        np.add.at(accum, j_idx, -shift)
+
+        positions += accum
+
+        for p, new in zip(self.particles, positions):
+            p.position[1] = new
 
     def extract_results(self):
         current_data = []
