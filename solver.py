@@ -12,6 +12,7 @@ import numpy as np
 from tqdm import tqdm
 from typing import Callable
 from scipy import constants
+from scipy.spatial import cKDTree
 from itertools import combinations
 import math
 """
@@ -41,43 +42,49 @@ class Solver:
         self.results = []
 
     def update(self):
-        """Updates the particle instance for each substep."""
-        fixated_particles = []
-        for particle in self.particles:
-            #taking care of fixated particles
-            if particle.fixated:
-                pos_stored = np.array(particle.position)
-                fixated_particles.append([particle,pos_stored])
-            # update position
-            particle.updatePosition(self.dt)
-            # calc accleration for this step
-            particle.acceleration = np.zeros(2)
-            if self.runtime <= ACCELERATION_DURATION:
-                particle.updateAcceleration(self.gravity)
-                #particle.updateAcceleration(self.applyNewtonGravitationalPotential(particle, (0, 0), -500))
-                pass
+        """Update particle states using numpy operations."""
 
-            # Check Constraints here
-            self.applyCircleConstraint(
-                particle, self.bounding_radius, self.bounding_center, bbox=True)
-            #self.applyCircleConstraint(particle, 10, (0, 0))
-            #self.applyCircleConstraint(particle, 10, (-50, -25))
-            #self.applyCircleConstraint(particle, 10, (50, -50))
+        if not self.particles:
+            return
 
-            # check collision
-            #self.solveCollision(particle, self.particles)
-        
-        # check collision at the end of the cycle
+        fixated_mask = np.array([p.fixated for p in self.particles])
+        stored_prev = np.array([p.position[0] for p in self.particles])[fixated_mask]
+        stored_cur = np.array([p.position[1] for p in self.particles])[fixated_mask]
+
+        prev_pos = np.array([p.position[0] for p in self.particles])
+        cur_pos = np.array([p.position[1] for p in self.particles])
+        radii = np.array([p.radius for p in self.particles])
+
+        velocity = cur_pos - prev_pos
+        acceleration = np.zeros_like(cur_pos)
+        if self.runtime <= ACCELERATION_DURATION:
+            acceleration += self.gravity
+
+        prev_pos = cur_pos
+        cur_pos = cur_pos + velocity + acceleration * (self.dt ** 2)
+
+        to_center = cur_pos - self.bounding_center
+        dist = np.linalg.norm(to_center, axis=1)
+        n = to_center / dist[:, None]
+        limit = self.bounding_radius - radii
+        mask = dist > limit
+        cur_pos[mask] = self.bounding_center + n[mask] * limit[mask, None]
+
+        for idx, p in enumerate(self.particles):
+            p.position[0] = prev_pos[idx]
+            p.position[1] = cur_pos[idx]
+            p.velocity[1] = velocity[idx]
+            p.acceleration = acceleration[idx]
+
+        # handle collisions and linkages
         self.solveCollisionCummulative()
-        
-        # constraint particles by linkage
         self.updateLinkageCumulative(2)
-        
 
-        
-        #reset the position of the fixated particle
-        for part_pos in fixated_particles:
-            part_pos[0].position = part_pos[1]
+        # restore fixated particle positions
+        fix_indices = np.where(fixated_mask)[0]
+        for store_idx, obj_idx in enumerate(fix_indices):
+            self.particles[obj_idx].position[0] = stored_prev[store_idx]
+            self.particles[obj_idx].position[1] = stored_cur[store_idx]
 
     def applyConstantForce(self, particle: Callable, force: np.array) -> np.array:
         acc = force/particle.mass
@@ -138,30 +145,52 @@ class Solver:
             par2.position[1] -= (1-mass_ratio)*n*delta
 
     def solveCollisionCummulative(self):
-        """Creating all possible combinations of all particles at the end of a update cycle.
-            Updating only after a full cycle and not for each particle individually.
-            For 100 particles around 100% faster.
-        """
+        """Resolve particle collisions using a KDTree based approach."""
         if len(self.particles) < 2:
             return
-        for par1, par2 in combinations(self.particles,2):
-            # calculate distance between particles and possible collision axis
-            min_coll_dist = par1.radius+par2.radius
-            coll_axis = par1.position[1]-par2.position[1]
-            dist = np.sqrt(coll_axis.dot(coll_axis))
-            # skip to next particles when distance is bigger than sum of radii
-            if dist > min_coll_dist:
-                continue
 
-            # calculate the normalized vector
-            n = coll_axis/dist
-            # calculat the overlap
-            delta = min_coll_dist-dist
-            # calculate massfraction
-            mass_ratio = par1.mass/(par1.mass + par2.mass)
-            # move each particle according to the massratio
-            par1.position[1] += mass_ratio*n*delta
-            par2.position[1] -= (1-mass_ratio)*n*delta
+        positions = np.array([p.position[1] for p in self.particles])
+        radii = np.array([p.radius for p in self.particles])
+        mass = np.array([p.mass for p in self.particles])
+
+        tree = cKDTree(positions)
+        search_radius = 2 * radii.max()
+        pairs = np.array(list(tree.query_pairs(search_radius)))
+        if len(pairs) == 0:
+            return
+
+        i_idx = pairs[:, 0]
+        j_idx = pairs[:, 1]
+
+        delta = positions[i_idx] - positions[j_idx]
+        dist = np.linalg.norm(delta, axis=1)
+        min_dist = radii[i_idx] + radii[j_idx]
+
+        mask = dist < min_dist
+        if not np.any(mask):
+            return
+
+        delta = delta[mask]
+        dist = dist[mask]
+        min_dist = min_dist[mask]
+        i_idx = i_idx[mask]
+        j_idx = j_idx[mask]
+
+        n_axis = delta / dist[:, None]
+        overlap = min_dist - dist
+        mass_ratio = mass[i_idx] / (mass[i_idx] + mass[j_idx])
+
+        shift_i = mass_ratio[:, None] * n_axis * overlap[:, None]
+        shift_j = -(1 - mass_ratio)[:, None] * n_axis * overlap[:, None]
+
+        accum = np.zeros_like(positions)
+        np.add.at(accum, i_idx, shift_i)
+        np.add.at(accum, j_idx, shift_j)
+
+        positions += accum
+
+        for p, new in zip(self.particles, positions):
+            p.position[1] = new
     
     def updateLinkageCumulative(self,target_distance):
         for par1,par2 in combinations(self.particles,2):
