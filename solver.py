@@ -41,29 +41,48 @@ class Solver:
         self.dt: float
         self.results = []
 
+        # store particle properties in numpy arrays for fast updates
+        self.positions = np.array([p.position for p in particles], dtype=float)
+        self.velocities = np.array([p.velocity for p in particles], dtype=float)
+        self.accelerations = np.array([p.acceleration for p in particles],
+                                      dtype=float)
+        self.radii = np.array([p.radius for p in particles], dtype=float)
+        self.masses = np.array([p.mass for p in particles], dtype=float)
+        self.fixated_mask = np.array([p.fixated for p in particles], dtype=bool)
+
+        # pre-compute linkage pairs by index
+        self.link_pairs = []
+        id_to_idx = {p.ID: idx for idx, p in enumerate(particles)}
+        for i, p in enumerate(particles):
+            for link_id in p.linkage:
+                j = id_to_idx.get(link_id)
+                if j is not None and j > i:
+                    self.link_pairs.append((i, j))
+
     def update(self):
-        """Update particle states using numpy operations."""
+        """Update particle states using stored numpy arrays."""
 
         if not self.particles:
             return
 
-        fixated_mask = np.array([p.fixated for p in self.particles])
-        stored_prev = np.array([p.position[0] for p in self.particles])[fixated_mask]
-        stored_cur = np.array([p.position[1] for p in self.particles])[fixated_mask]
+        fixated_mask = self.fixated_mask
+        stored_prev = self.positions[fixated_mask, 0].copy()
+        stored_cur = self.positions[fixated_mask, 1].copy()
 
-        prev_pos = np.array([p.position[0] for p in self.particles])
-        cur_pos = np.array([p.position[1] for p in self.particles])
-        radii = np.array([p.radius for p in self.particles])
+        velocity = self.positions[:, 1] - self.positions[:, 0]
+        self.velocities[:, 1] = velocity
 
-        velocity = cur_pos - prev_pos
-        acceleration = np.zeros_like(cur_pos)
+        acceleration = np.zeros_like(self.positions[:, 0])
         if self.runtime <= ACCELERATION_DURATION:
             acceleration += self.gravity
+        self.accelerations = acceleration
 
-        prev_pos = cur_pos
-        cur_pos = cur_pos + velocity + acceleration * (self.dt ** 2)
+        self.positions[:, 0] = self.positions[:, 1]
+        self.positions[:, 1] = (
+            self.positions[:, 1] + velocity + acceleration * (self.dt ** 2)
+        )
 
-        to_center = cur_pos - self.bounding_center
+        to_center = self.positions[:, 1] - self.bounding_center
         dist = np.linalg.norm(to_center, axis=1)
         n = np.divide(
             to_center,
@@ -72,24 +91,17 @@ class Solver:
             where=dist[:, None] != 0,
         )
         limit = self.bounding_radius - radii
+
         mask = dist > limit
-        cur_pos[mask] = self.bounding_center + n[mask] * limit[mask, None]
+        self.positions[mask, 1] = self.bounding_center + n[mask] * limit[mask, None]
 
-        for idx, p in enumerate(self.particles):
-            p.position[0] = prev_pos[idx]
-            p.position[1] = cur_pos[idx]
-            p.velocity[1] = velocity[idx]
-            p.acceleration = acceleration[idx]
-
-        # handle collisions and linkages
+        # handle collisions and linkages on the arrays
         self.solveCollisionCummulative()
         self.updateLinkageCumulative(2)
 
         # restore fixated particle positions
-        fix_indices = np.where(fixated_mask)[0]
-        for store_idx, obj_idx in enumerate(fix_indices):
-            self.particles[obj_idx].position[0] = stored_prev[store_idx]
-            self.particles[obj_idx].position[1] = stored_cur[store_idx]
+        self.positions[fixated_mask, 0] = stored_prev
+        self.positions[fixated_mask, 1] = stored_cur
 
     def applyConstantForce(self, particle: Callable, force: np.array) -> np.array:
         acc = force/particle.mass
@@ -151,12 +163,12 @@ class Solver:
 
     def solveCollisionCummulative(self):
         """Resolve particle collisions using a KDTree based approach."""
-        if len(self.particles) < 2:
+        if len(self.positions) < 2:
             return
 
-        positions = np.array([p.position[1] for p in self.particles])
-        radii = np.array([p.radius for p in self.particles])
-        mass = np.array([p.mass for p in self.particles])
+        positions = self.positions[:, 1]
+        radii = self.radii
+        mass = self.masses
 
         tree = cKDTree(positions)
         search_radius = 2 * radii.max()
@@ -192,36 +204,36 @@ class Solver:
         np.add.at(accum, i_idx, shift_i)
         np.add.at(accum, j_idx, shift_j)
 
-        positions += accum
-
-        for p, new in zip(self.particles, positions):
-            p.position[1] = new
+        self.positions[:, 1] += accum
     
-    def updateLinkageCumulative(self,target_distance):
-        for par1,par2 in combinations(self.particles,2):
-            if par1.ID not in par2.linkage:
+    def updateLinkageCumulative(self, target_distance):
+        for i, j in self.link_pairs:
+            coll_axis = self.positions[i, 1] - self.positions[j, 1]
+            dist = np.linalg.norm(coll_axis)
+            if dist == 0:
                 continue
-            min_coll_dist = par1.radius+par2.radius
-            coll_axis = par1.position[1]-par2.position[1]
-            dist = np.sqrt(coll_axis.dot(coll_axis))
-            # calculate the normalized vector
-            n = coll_axis/dist
-            # calculat the overlap
-            delta = target_distance-dist
-            # calculate massfraction
-            radius_ratio = par1.radius/(par1.radius + par2.radius)
-            # move each particle according to the massratio
-            par1.position[1] += 0.5*n*delta
-            par2.position[1] -= 0.5*n*delta
+            n = coll_axis / dist
+            delta = target_distance - dist
+            self.positions[i, 1] += 0.5 * n * delta
+            self.positions[j, 1] -= 0.5 * n * delta
+
+    def _sync_particles(self):
+        for idx, p in enumerate(self.particles):
+            p.position = self.positions[idx].copy()
+            p.velocity = self.velocities[idx].copy()
+            p.acceleration = self.accelerations[idx].copy()
 
     def extract_results(self):
+        self._sync_particles()
         current_data = []
-        for particle in self.particles:
-            current_data.append((*particle.position[1],
-                                 *particle.velocity[1],
-                                 *particle.acceleration,
-                                 particle.mass,
-                                 particle.radius))
+        for idx in range(len(self.particles)):
+            current_data.append((
+                *self.positions[idx, 1],
+                *self.velocities[idx, 1],
+                *self.accelerations[idx],
+                self.masses[idx],
+                self.radii[idx],
+            ))
         return current_data
 
     def run_simulation(self, time: float, steps: int) -> list:
