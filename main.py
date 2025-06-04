@@ -15,9 +15,6 @@ from simulation import (
     plot_kinetic_energy,
 )
 
-
-np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
-
 def main():
     """Run a demo simulation and return the results."""
     sim_time = 5
