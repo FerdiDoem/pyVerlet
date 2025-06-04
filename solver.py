@@ -36,9 +36,14 @@ class Solver:
         self.particles = particles
         self.bounding_center = np.array([BBOX_CENTER_X, BBOX_CENTER_Y])
         self.bounding_radius: float = BBOX_ROUND_RADIUS
-        self.runtime: float
-        self.dt: float
+        self.runtime: float = 0.0
+        self.dt: float = 0.0
         self.results = []
+
+        # store particle properties in numpy arrays for fast updates
+        self._sync_arrays()
+
+        # pre-compute linkage pairs
         self.linkage_pairs = self._compute_linkage_pairs()
 
     def _compute_linkage_pairs(self):
@@ -58,23 +63,32 @@ class Solver:
             return []
         return np.array(sorted(pairs), dtype=int)
 
-        # store particle properties in numpy arrays for fast updates
-        self.positions = np.array([p.position for p in particles], dtype=float)
-        self.velocities = np.array([p.velocity for p in particles], dtype=float)
-        self.accelerations = np.array([p.acceleration for p in particles],
-                                      dtype=float)
-        self.radii = np.array([p.radius for p in particles], dtype=float)
-        self.masses = np.array([p.mass for p in particles], dtype=float)
-        self.fixated_mask = np.array([p.fixated for p in particles], dtype=bool)
+    def _sync_arrays(self):
+        """Load particle attributes into numpy arrays for fast updates."""
+        if not self.particles:
+            self.positions = np.empty((0, 2, 2))
+            self.velocities = np.empty((0, 2, 2))
+            self.accelerations = np.empty((0, 2))
+            self.radii = np.empty((0,))
+            self.masses = np.empty((0,))
+            self.fixated_mask = np.empty((0,), dtype=bool)
+            return
+        self.positions = np.array([p.position for p in self.particles], dtype=float)
+        self.velocities = np.array([p.velocity for p in self.particles], dtype=float)
+        self.accelerations = np.array([p.acceleration for p in self.particles], dtype=float)
+        self.radii = np.array([p.radius for p in self.particles], dtype=float)
+        self.masses = np.array([p.mass for p in self.particles], dtype=float)
+        self.fixated_mask = np.array([p.fixated for p in self.particles], dtype=bool)
 
-        # pre-compute linkage pairs by index
-        self.link_pairs = []
-        id_to_idx = {p.ID: idx for idx, p in enumerate(particles)}
-        for i, p in enumerate(particles):
-            for link_id in p.linkage:
-                j = id_to_idx.get(link_id)
-                if j is not None and j > i:
-                    self.link_pairs.append((i, j))
+    def _sync_particles(self):
+        """Write numpy array state back to the particle objects."""
+        for idx, p in enumerate(self.particles):
+            p.position = self.positions[idx]
+            p.velocity = self.velocities[idx]
+            p.acceleration = self.accelerations[idx]
+            p.radius = self.radii[idx]
+            p.mass = self.masses[idx]
+            p.fixated = bool(self.fixated_mask[idx])
 
     def update(self):
         """Update particle states using stored numpy arrays."""
@@ -107,7 +121,7 @@ class Solver:
             out=np.zeros_like(to_center),
             where=dist[:, None] != 0,
         )
-        limit = self.bounding_radius - radii
+        limit = self.bounding_radius - self.radii
 
         mask = dist > limit
         self.positions[mask, 1] = self.bounding_center + n[mask] * limit[mask, None]
@@ -228,7 +242,7 @@ class Solver:
         if len(self.linkage_pairs) == 0:
             return
 
-        positions = np.array([p.position[1] for p in self.particles])
+        positions = self.positions[:, 1]
 
         i_idx = self.linkage_pairs[:, 0]
         j_idx = self.linkage_pairs[:, 1]
@@ -244,10 +258,7 @@ class Solver:
         np.add.at(accum, i_idx, shift)
         np.add.at(accum, j_idx, -shift)
 
-        positions += accum
-
-        for p, new in zip(self.particles, positions):
-            p.position[1] = new
+        self.positions[:, 1] += accum
 
     def extract_results(self):
         self._sync_particles()
@@ -274,3 +285,12 @@ class Solver:
                 self.runtime += self.dt
                 pbar.update(1)
         return self.results
+
+    def run_simulation_iter(self, time: float, steps: int):
+        """Yield results step by step while running the simulation."""
+        self.dt = time / steps
+        self.runtime = self.dt
+        for _ in range(steps):
+            self.update()
+            yield self.runtime, self.extract_results()
+            self.runtime += self.dt
