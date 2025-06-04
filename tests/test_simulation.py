@@ -17,9 +17,9 @@ def test_collision_resolution():
     solver = Solver([p1, p2])
     solver.dt = 0.1
     solver.runtime = 0
-    initial = np.linalg.norm(p1.position[1] - p2.position[1])
+    initial = np.linalg.norm(solver.positions[0, 1] - solver.positions[1, 1])
     solver.solveCollisionCummulative()
-    dist = np.linalg.norm(p1.position[1] - p2.position[1])
+    dist = np.linalg.norm(solver.positions[0, 1] - solver.positions[1, 1])
     assert dist > initial
 
 
