@@ -84,8 +84,14 @@ class Solver:
 
         to_center = self.positions[:, 1] - self.bounding_center
         dist = np.linalg.norm(to_center, axis=1)
-        n = np.divide(to_center, dist[:, None], out=np.zeros_like(to_center), where=dist[:, None] != 0)
-        limit = self.bounding_radius - self.radii
+        n = np.divide(
+            to_center,
+            dist[:, None],
+            out=np.zeros_like(to_center),
+            where=dist[:, None] != 0,
+        )
+        limit = self.bounding_radius - radii
+
         mask = dist > limit
         self.positions[mask, 1] = self.bounding_center + n[mask] * limit[mask, None]
 
