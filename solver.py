@@ -138,30 +138,36 @@ class Solver:
             par2.position[1] -= (1-mass_ratio)*n*delta
 
     def solveCollisionCummulative(self):
-        """Creating all possible combinations of all particles at the end of a update cycle.
-            Updating only after a full cycle and not for each particle individually.
-            For 100 particles around 100% faster.
-        """
+        """Resolve particle collisions using a vectorized approach."""
         if len(self.particles) < 2:
             return
-        for par1, par2 in combinations(self.particles,2):
-            # calculate distance between particles and possible collision axis
-            min_coll_dist = par1.radius+par2.radius
-            coll_axis = par1.position[1]-par2.position[1]
-            dist = np.sqrt(coll_axis.dot(coll_axis))
-            # skip to next particles when distance is bigger than sum of radii
-            if dist > min_coll_dist:
-                continue
 
-            # calculate the normalized vector
-            n = coll_axis/dist
-            # calculat the overlap
-            delta = min_coll_dist-dist
-            # calculate massfraction
-            mass_ratio = par1.mass/(par1.mass + par2.mass)
-            # move each particle according to the massratio
-            par1.position[1] += mass_ratio*n*delta
-            par2.position[1] -= (1-mass_ratio)*n*delta
+        positions = np.array([p.position[1] for p in self.particles])
+        radii = np.array([p.radius for p in self.particles])
+        mass = np.array([p.mass for p in self.particles])
+
+        delta = positions[:, None, :] - positions[None, :, :]
+        dist = np.linalg.norm(delta, axis=-1)
+        min_dist = radii[:, None] + radii[None, :]
+
+        mask = (dist < min_dist) & np.triu(np.ones_like(dist, dtype=bool), k=1)
+        if not np.any(mask):
+            return
+
+        safe_dist = np.where(mask, dist, 1.0)
+        n_axis = delta / safe_dist[..., None]
+        shift = (min_dist - dist)[..., None] * n_axis * mask[..., None]
+
+        mass_ratio = mass[:, None] / (mass[:, None] + mass[None, :])
+        pos_shift = (
+            np.sum(mass_ratio[..., None] * shift, axis=1) -
+            np.sum((1 - mass_ratio)[..., None] * shift, axis=0)
+        )
+
+        positions += pos_shift
+
+        for p, new in zip(self.particles, positions):
+            p.position[1] = new
     
     def updateLinkageCumulative(self,target_distance):
         for par1,par2 in combinations(self.particles,2):
