@@ -13,6 +13,7 @@ from tqdm import tqdm
 from typing import Callable
 from scipy import constants
 from scipy.spatial import cKDTree
+from grid import HashGrid
 import math
 """
 Unit System:
@@ -30,10 +31,11 @@ ACCELERATION_DURATION = 100
 
 class Solver:
 
-    def __init__(self, particles: list,):
+    def __init__(self, particles: list, use_grid: bool = True):
         self.gravity = np.array([0, GRAVITY])
         self.force = np.array([CONST_FORCE_VEC_X, CONST_FORCE_VEC_Y])
         self.particles = particles
+        self.use_grid = use_grid
         self.bounding_center = np.array([BBOX_CENTER_X, BBOX_CENTER_Y])
         self.bounding_radius: float = BBOX_ROUND_RADIUS
         self.runtime: float = 0.0
@@ -201,9 +203,14 @@ class Solver:
         radii = self.radii
         mass = self.masses
 
-        tree = cKDTree(positions)
         search_radius = 2 * radii.max()
-        pairs = np.array(list(tree.query_pairs(search_radius)))
+        if self.use_grid:
+            grid = HashGrid()
+            grid.build(positions, search_radius)
+            pairs = grid.query_pairs(search_radius)
+        else:
+            tree = cKDTree(positions)
+            pairs = np.array(list(tree.query_pairs(search_radius)))
         if len(pairs) == 0:
             return
 
