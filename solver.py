@@ -14,6 +14,7 @@ from typing import Callable
 from scipy import constants
 from scipy.spatial import cKDTree
 from grid import HashGrid
+from buffers import init_buffers
 import math
 """
 Unit System:
@@ -42,8 +43,19 @@ class Solver:
         self.dt: float = 0.0
         self.results = []
 
-        # store particle properties in numpy arrays for fast updates
-        self._sync_arrays()
+        # initialize buffers holding particle data and work arrays
+        self.buffers = init_buffers(self.particles)
+        self.positions = self.buffers["positions"]
+        self.velocities = self.buffers["velocities"]
+        self.accelerations = self.buffers["accelerations"]
+        self.radii = self.buffers["radii"]
+        self.masses = self.buffers["masses"]
+        self.fixated_mask = self.buffers["fixated_mask"]
+        self.work_vec2 = self.buffers["work_vec2"]
+        self.work_vec2b = self.buffers["work_vec2b"]
+        self.work_scalar = self.buffers["work_scalar"]
+        self.work_scalar_b = self.buffers["work_scalar_b"]
+        self.accum = self.buffers["accum"]
 
         # pre-compute linkage pairs
         self.linkage_pairs = self._compute_linkage_pairs()
@@ -102,31 +114,40 @@ class Solver:
         stored_prev = self.positions[fixated_mask, 0].copy()
         stored_cur = self.positions[fixated_mask, 1].copy()
 
-        velocity = self.positions[:, 1] - self.positions[:, 0]
-        self.velocities[:, 1] = velocity
+        # v = pos_cur - pos_prev
+        np.subtract(self.positions[:, 1], self.positions[:, 0],
+                    out=self.velocities[:, 1])
+        velocity = self.velocities[:, 1]
 
-        acceleration = np.zeros_like(self.positions[:, 0])
+        # reset and apply acceleration
+        self.accelerations.fill(0.0)
         if self.runtime <= ACCELERATION_DURATION:
-            acceleration += self.gravity
-        self.accelerations = acceleration
+            self.accelerations += self.gravity
+        acceleration = self.accelerations
 
         self.positions[:, 0] = self.positions[:, 1]
-        self.positions[:, 1] = (
-            self.positions[:, 1] + velocity + acceleration * (self.dt ** 2)
-        )
+        self.positions[:, 1] += velocity
+        np.multiply(acceleration, self.dt ** 2, out=self.work_vec2)
+        self.positions[:, 1] += self.work_vec2
 
-        to_center = self.positions[:, 1] - self.bounding_center
-        dist = np.linalg.norm(to_center, axis=1)
-        n = np.divide(
-            to_center,
-            dist[:, None],
-            out=np.zeros_like(to_center),
-            where=dist[:, None] != 0,
-        )
-        limit = self.bounding_radius - self.radii
+        # distance from center
+        np.subtract(self.positions[:, 1], self.bounding_center,
+                    out=self.work_vec2)
+        np.square(self.work_vec2, out=self.work_vec2b)
+        np.sum(self.work_vec2b, axis=1, out=self.work_scalar)
+        np.sqrt(self.work_scalar, out=self.work_scalar)
+        dist = self.work_scalar
+        np.divide(self.work_vec2, dist[:, None], out=self.work_vec2b,
+                  where=dist[:, None] != 0)
+
+        np.subtract(self.bounding_radius, self.radii, out=self.work_scalar_b)
+        limit = self.work_scalar_b
 
         mask = dist > limit
-        self.positions[mask, 1] = self.bounding_center + n[mask] * limit[mask, None]
+        self.work_vec2[mask] = self.work_vec2b[mask]
+        self.work_vec2[mask] *= limit[mask, None]
+        self.work_vec2[mask] += self.bounding_center
+        self.positions[mask, 1] = self.work_vec2[mask]
 
         # handle collisions and linkages on the arrays
         self.solveCollisionCummulative()
@@ -238,11 +259,11 @@ class Solver:
         shift_i = mass_ratio[:, None] * n_axis * overlap[:, None]
         shift_j = -(1 - mass_ratio)[:, None] * n_axis * overlap[:, None]
 
-        accum = np.zeros_like(positions)
-        np.add.at(accum, i_idx, shift_i)
-        np.add.at(accum, j_idx, shift_j)
+        self.accum.fill(0.0)
+        np.add.at(self.accum, i_idx, shift_i)
+        np.add.at(self.accum, j_idx, shift_j)
 
-        self.positions[:, 1] += accum
+        self.positions[:, 1] += self.accum
     
     def updateLinkageCumulative(self, target_distance):
         """Resolve linkage constraints for all linked particle pairs."""
@@ -261,11 +282,11 @@ class Solver:
 
         shift = 0.5 * (target_distance - dist)[:, None] * n_axis
 
-        accum = np.zeros_like(positions)
-        np.add.at(accum, i_idx, shift)
-        np.add.at(accum, j_idx, -shift)
+        self.accum.fill(0.0)
+        np.add.at(self.accum, i_idx, shift)
+        np.add.at(self.accum, j_idx, -shift)
 
-        self.positions[:, 1] += accum
+        self.positions[:, 1] += self.accum
 
     def extract_results(self):
         self._sync_particles()
