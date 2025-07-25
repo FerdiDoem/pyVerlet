@@ -33,14 +33,3 @@ class VerletObject:
         self.linkage = []
         self.fixated = False
     
-    def updatePosition(self, dt):
-        self.updateVelocity()
-        self.position[0] = self.position[1]
-        self.position[1] += self.velocity[1]+(self.acceleration*(dt**2))
-        
-    def updateVelocity(self,):
-        self.velocity[1] = self.position[1]-self.position[0]
-  
-    def updateAcceleration(self, acc):
-        self.acceleration += acc
-        # print(acc,self.acceleration)
