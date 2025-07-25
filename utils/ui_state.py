@@ -16,3 +16,13 @@ def reset_state():
 def toggle_running():
     """Toggle the running flag."""
     st.session_state["running"] = not st.session_state.get("running", False)
+
+
+def start_running():
+    """Set running flag to True."""
+    st.session_state["running"] = True
+
+
+def stop_running():
+    """Set running flag to False."""
+    st.session_state["running"] = False
