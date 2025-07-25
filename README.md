@@ -8,6 +8,7 @@ Run the web interface with:
 ```bash
 streamlit run streamlit_app.py
 ```
+The controls are now located in the sidebar.
 
 ### Collision Detection
 
