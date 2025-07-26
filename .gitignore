@@ -5,7 +5,4 @@
 *.mp4
 SpeedLab.py
 
-# frontend build artifacts
-/frontend/node_modules
-/frontend/dist
 

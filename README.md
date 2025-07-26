@@ -3,28 +3,20 @@ A simple particle simulation
 
 ## Streamlit Application
 
-Run the web interface with:
+Run the local GUI with:
 
 ```bash
 streamlit run streamlit_app.py
 ```
 The controls are now located in the sidebar.
 
+All rendering is performed locally using Matplotlib.
+
 ### Collision Detection
 
 `Solver` uses a spatial hash grid for neighbour search by default. Pass
 `use_grid=False` to fall back to the slower KD-tree implementation.
 
-## Vite Frontend
-
-A small React + TypeScript interface lives in `frontend/`. It connects to the
-WebSocket backend and renders the particles with WebGL.
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
 
 ## How to benchmark
 
