@@ -21,12 +21,45 @@ def maybe_rerun():
         st.rerun()
 
 
-def maybe_rerun():
-    """Call Streamlit's rerun function under any API name."""
-    if hasattr(st, "experimental_rerun"):
-        st.experimental_rerun()
-    else:
-        st.rerun()
+def run_live_demo(ui):
+    """Run the live demo without triggering Streamlit reruns."""
+    solver = setup_solver(
+        ui["n_particles"],
+        ui["bounding_box_radius"],
+        ui["sim_time"],
+        ui["substeps"],
+    )
+    iterator = solver.run_simulation_iter(ui["sim_time"], int(ui["substeps"]))
+
+    for _runtime, data in iterator:
+        if st.session_state.get("fig_ax_scatter") is None:
+            fig, ax = plt.subplots(figsize=(5, 5))
+            ax.set_aspect("equal")
+            ax.set_facecolor("darkgray")
+            circle = plt.Circle(
+                (0, 0),
+                ui["bounding_box_radius"],
+                edgecolor="black",
+                facecolor="white",
+                fill=True,
+            )
+            ax.add_patch(circle)
+            scatter = ax.scatter([], [], cmap="gist_rainbow", edgecolors="white", linewidth=0)
+            st.session_state["fig_ax_scatter"] = (fig, ax, scatter)
+        fig, ax, scatter = st.session_state["fig_ax_scatter"]
+        fig.canvas.draw()
+        px_per_scale = (
+            ax.get_window_extent().width / (2 * ui["bounding_box_radius"] + 2) * 72.0 / fig.dpi
+        )
+        particles = np.vstack(data)
+        scatter.set_offsets(particles[:, :2])
+        scatter.set_array(np.linalg.norm(particles[:, 6:8], axis=1))
+        scatter.set_sizes((px_per_scale * 2 * particles[:, 7]) ** 2)
+        st.session_state["canvas_slot"].pyplot(fig)
+        time.sleep(ui["speed"] / 60)
+
+    reset_state()
+
 
 
 def build_sidebar():
@@ -128,13 +161,7 @@ def main():
         st.pyplot(kinetic_fig)
 
     if ui["live"]:
-        st.session_state["solver"] = setup_solver(
-            ui["n_particles"], ui["bounding_box_radius"], ui["sim_time"], ui["substeps"]
-        )
-        st.session_state["iter"] = st.session_state["solver"].run_simulation_iter(
-            ui["sim_time"], int(ui["substeps"])
-        )
-        start_running()
+        run_live_demo(ui)
 
     while st.session_state.get("running", False):
         if not run_loop_step(ui):
