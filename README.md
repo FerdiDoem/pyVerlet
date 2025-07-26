@@ -1,5 +1,7 @@
 # pyVerlet
-A simple particle simulation
+Testing the use of OpenAI's Codex
+
+Usecase: A simple particle simulation 
 
 ## Streamlit Application
 
