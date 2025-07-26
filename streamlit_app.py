@@ -11,7 +11,6 @@ from utils.ui_state import (
     reset_state,
 )
 
-canvas_slot = st.empty()
 
 
 def maybe_rerun():
@@ -60,39 +59,37 @@ def run_loop_step(ui):
         st.session_state["iter"] = st.session_state["solver"].run_simulation_iter(
             ui["sim_time"], int(ui["substeps"])
         )
+
     try:
         _, data = next(st.session_state["iter"])
     except StopIteration:
         stop_running()
         return False
 
-    fig, ax = plt.subplots(figsize=(5, 5))
-    ax.set_aspect("equal")
-    ax.set_facecolor("darkgray")
-    circle = plt.Circle(
-        (0, 0),
-        ui["bounding_box_radius"],
-        edgecolor="black",
-        facecolor="white",
-        fill=True,
-    )
-    ax.add_patch(circle)
+    if st.session_state.get("fig_ax_scatter") is None:
+        fig, ax = plt.subplots(figsize=(5, 5))
+        ax.set_aspect("equal")
+        ax.set_facecolor("darkgray")
+        circle = plt.Circle(
+            (0, 0),
+            ui["bounding_box_radius"],
+            edgecolor="black",
+            facecolor="white",
+            fill=True,
+        )
+        ax.add_patch(circle)
+        scatter = ax.scatter([], [], cmap="gist_rainbow", edgecolors="white", linewidth=0)
+        st.session_state["fig_ax_scatter"] = (fig, ax, scatter)
+    fig, ax, scatter = st.session_state["fig_ax_scatter"]
     fig.canvas.draw()
     px_per_scale = (
         ax.get_window_extent().width / (2 * ui["bounding_box_radius"] + 2) * 72.0 / fig.dpi
     )
     particles = np.vstack(data)
-    ax.scatter(
-        particles[:, 0],
-        particles[:, 1],
-        c=np.linalg.norm(particles[:, 6:8], axis=1),
-        cmap="gist_rainbow",
-        edgecolors="white",
-        s=(px_per_scale * 2 * particles[:, 7]) ** 2,
-        linewidth=0,
-    )
-    canvas_slot.pyplot(fig, clear_figure=True)
-    plt.close(fig)
+    scatter.set_offsets(particles[:, :2])
+    scatter.set_array(np.linalg.norm(particles[:, 6:8], axis=1))
+    scatter.set_sizes((px_per_scale * 2 * particles[:, 7]) ** 2)
+    st.session_state["canvas_slot"].pyplot(fig)
     return True
 
 
