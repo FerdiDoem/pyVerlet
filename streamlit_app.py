@@ -14,6 +14,14 @@ from utils.ui_state import (
 canvas_slot = st.empty()
 
 
+def maybe_rerun():
+    """Call Streamlit's rerun function under any API name."""
+    if hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
+    else:
+        st.rerun()
+
+
 def build_sidebar():
     """Return a dictionary with sidebar widget values."""
     st.sidebar.header("Simulation Parameters")
@@ -128,7 +136,7 @@ def main():
             break
 
         time.sleep(ui["speed"] / 60)
-        st.experimental_rerun()
+        maybe_rerun()
 
 
 if __name__ == "__main__":
